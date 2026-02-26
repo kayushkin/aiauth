@@ -1,0 +1,103 @@
+package aiauth
+
+import (
+	"fmt"
+	"os"
+	"strings"
+	"time"
+)
+
+// providerEnvVars maps provider names to their environment variable names.
+var providerEnvVars = map[string]string{
+	"anthropic": "ANTHROPIC_API_KEY",
+	"openai":    "OPENAI_API_KEY",
+	"google":    "GOOGLE_API_KEY",
+	"cohere":    "COHERE_API_KEY",
+}
+
+// RegisterProviderEnvVar registers an env var name for a provider.
+func RegisterProviderEnvVar(provider, envVar string) {
+	providerEnvVars[provider] = envVar
+}
+
+// providerRegistry holds registered providers for token refresh.
+var providerRegistry = map[string]Provider{}
+
+// RegisterProvider registers a provider for use in token refresh.
+func RegisterProvider(p Provider) {
+	providerRegistry[p.ID()] = p
+}
+
+// ResolveKey returns a valid API key for the given provider.
+// Priority: env var → oauth (auto-refresh if expired) → token → api_key
+func (s *Store) ResolveKey(provider string) (string, error) {
+	// 1. Check env var
+	if envName, ok := providerEnvVars[provider]; ok {
+		if val := os.Getenv(envName); val != "" {
+			return val, nil
+		}
+	}
+
+	// 2. Get profiles ordered by priority
+	creds := s.ProfilesForProvider(provider)
+	if len(creds) == 0 {
+		return "", fmt.Errorf("no credentials found for provider %q", provider)
+	}
+
+	now := time.Now().UnixMilli()
+
+	for _, c := range creds {
+		switch c.Type {
+		case "oauth":
+			key := c.Access
+			if key == "" {
+				continue
+			}
+			// Check expiry and refresh if needed
+			if c.Expires > 0 && c.Expires < now {
+				if p, ok := providerRegistry[provider]; ok {
+					refreshed, err := p.RefreshToken(c)
+					if err != nil {
+						continue // try next credential
+					}
+					name := s.FindProfileName(c)
+					_ = s.UpdateProfile(name, refreshed)
+					key = refreshed.Access
+				} else {
+					continue // expired and no provider to refresh
+				}
+			}
+			return key, nil
+
+		case "token":
+			if c.Token == "" {
+				continue
+			}
+			if c.Expires > 0 && c.Expires < now {
+				continue // expired
+			}
+			return c.Token, nil
+
+		case "api_key":
+			if c.Key == "" {
+				continue
+			}
+			return c.Key, nil
+		}
+	}
+
+	return "", fmt.Errorf("no valid credentials for provider %q", provider)
+}
+
+// AnthropicKey is a convenience for ResolveKey("anthropic").
+func (s *Store) AnthropicKey() (string, error) {
+	return s.ResolveKey("anthropic")
+}
+
+// MaskKey masks a key for display, showing only the first and last 4 chars.
+func MaskKey(key string) string {
+	if len(key) <= 12 {
+		return strings.Repeat("*", len(key))
+	}
+	return key[:4] + "..." + key[len(key)-4:]
+}
