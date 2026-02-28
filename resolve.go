@@ -63,6 +63,19 @@ func (s *Store) ResolveKey(provider string) (string, error) {
 					name := s.FindProfileName(c)
 					_ = s.UpdateProfile(name, refreshed)
 					key = refreshed.Access
+
+					// Sync to <provider>:manual for OpenClaw compatibility
+					manualName := provider + ":manual"
+					if _, exists := s.data.Profiles[manualName]; exists {
+						manualCred := &Credential{
+							Type:     "token",
+							Provider: provider,
+							Token:    refreshed.Access,
+							Expires:  refreshed.Expires,
+							Email:    refreshed.Email,
+						}
+						_ = s.UpdateProfile(manualName, manualCred)
+					}
 				} else {
 					continue // expired and no provider to refresh
 				}

@@ -57,10 +57,24 @@ func loginCmd() *cobra.Command {
 				return err
 			}
 
-			name := fmt.Sprintf("anthropic:oauth")
-			if err := store.SetProfile(name, cred); err != nil {
-				return fmt.Errorf("failed to save: %w", err)
+			// Save as oauth profile (canonical)
+			if err := store.SetProfile("anthropic:oauth", cred); err != nil {
+				return fmt.Errorf("failed to save oauth profile: %w", err)
 			}
+
+			// Also update anthropic:manual (token type) for OpenClaw compatibility.
+			// OpenClaw's lastGood often points to anthropic:manual, so keep it fresh.
+			manualCred := &aiauth.Credential{
+				Type:     "token",
+				Provider: "anthropic",
+				Token:    cred.Access,
+				Expires:  cred.Expires,
+				Email:    cred.Email,
+			}
+			if err := store.SetProfile("anthropic:manual", manualCred); err != nil {
+				return fmt.Errorf("failed to save manual profile: %w", err)
+			}
+
 			fmt.Println("✓ Logged in successfully")
 			return nil
 		},
@@ -109,6 +123,7 @@ func keyCmd() *cobra.Command {
 		Short: "Print resolved API key to stdout",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			aiauth.RegisterProvider(&providers.Anthropic{})
 			store := aiauth.DefaultStore()
 			key, err := store.ResolveKey(args[0])
 			if err != nil {
@@ -147,6 +162,19 @@ func refreshCmd() *cobra.Command {
 				if err := store.UpdateProfile(name, refreshed); err != nil {
 					return fmt.Errorf("failed to save: %w", err)
 				}
+
+				// Also sync to anthropic:manual for OpenClaw compatibility
+				manualCred := &aiauth.Credential{
+					Type:     "token",
+					Provider: "anthropic",
+					Token:    refreshed.Access,
+					Expires:  refreshed.Expires,
+					Email:    refreshed.Email,
+				}
+				if err := store.UpdateProfile("anthropic:manual", manualCred); err != nil {
+					return fmt.Errorf("failed to sync manual profile: %w", err)
+				}
+
 				fmt.Println("✓ Token refreshed successfully")
 				return nil
 			}
