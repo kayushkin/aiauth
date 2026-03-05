@@ -23,13 +23,16 @@ func (s *Store) AnthropicClient() (*anthropic.Client, error) {
 		c := anthropic.NewClient(
 			option.WithAPIKey(""),
 			option.WithAuthToken(key),
-			option.WithHeader("anthropic-beta", "claude-code-20250219,oauth-2025-04-20"),
+			option.WithHeader("anthropic-beta", "claude-code-20250219,oauth-2025-04-20,prompt-caching-2024-07-31"),
 			option.WithHeader("user-agent", "claude-cli/2.1.44 (external, cli)"),
 			option.WithHeader("x-app", "cli"),
 		)
 		return &c, nil
 	}
 
-	c := anthropic.NewClient(option.WithAPIKey(key))
+	c := anthropic.NewClient(
+		option.WithAPIKey(key),
+		option.WithHeader("anthropic-beta", "prompt-caching-2024-07-31"),
+	)
 	return &c, nil
 }
