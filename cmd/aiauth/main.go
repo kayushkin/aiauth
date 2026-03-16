@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"net/http"
 	"os"
 	"os/exec"
 	"runtime"
@@ -76,6 +77,10 @@ func loginCmd() *cobra.Command {
 			}
 
 			fmt.Println("✓ Logged in successfully")
+
+			// Sync to model-store (updates inber's credential DB)
+			syncModelStore()
+
 			return nil
 		},
 	}
@@ -176,10 +181,30 @@ func refreshCmd() *cobra.Command {
 				}
 
 				fmt.Println("✓ Token refreshed successfully")
+				syncModelStore()
 				return nil
 			}
 			return fmt.Errorf("no OAuth credentials found for %s", provider)
 		},
+	}
+}
+
+// syncModelStore notifies model-store to pull updated credentials from auth-profiles.json.
+func syncModelStore() {
+	addr := os.Getenv("MODEL_STORE_URL")
+	if addr == "" {
+		addr = "http://localhost:8150"
+	}
+	resp, err := http.Post(addr+"/api/credentials/sync", "application/json", nil)
+	if err != nil {
+		fmt.Printf("⚠ model-store sync failed (is it running?): %v\n", err)
+		return
+	}
+	resp.Body.Close()
+	if resp.StatusCode == 200 {
+		fmt.Println("✓ model-store synced")
+	} else {
+		fmt.Printf("⚠ model-store sync returned %d\n", resp.StatusCode)
 	}
 }
 
