@@ -74,6 +74,17 @@ func (s *Store) SetProfile(name string, cred *Credential) error {
 	return s.save()
 }
 
+// DeleteProfile removes a profile and saves.
+func (s *Store) DeleteProfile(name string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.data.Profiles == nil {
+		return nil
+	}
+	delete(s.data.Profiles, name)
+	return s.save()
+}
+
 // ProfilesForProvider returns all credentials for a given provider, sorted by priority.
 func (s *Store) ProfilesForProvider(provider string) []*Credential {
 	s.mu.Lock()
